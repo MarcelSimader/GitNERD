@@ -9,6 +9,23 @@
 " let g:gitNERD_did_plugin = 1
 " TODO: uncomment this and remove the '!' from each function
 
+function! s:Config(name, Default)
+    try
+        if exists('g:'.a:name) | return | endif
+        let g:{a:name} = a:Default()
+    catch
+        echohl ErrorMsg
+        echomsg 'Error while processing GitNERD config "'.a:name.'"'
+        echohl None
+    endtry
+endfunction
+
+call s:Config('gitNERD_enabled', {-> 1})
+if !g:gitNERD_enabled | finish | endif
+call s:Config('gitNERD_render_throttle_ms', {-> 35})
+call s:Config('gitNERD_delimiters', {-> ['[', ']']})
+call s:Config('gitNERD_status_flags', {-> ['--ignored', '--find-renames=5']})
+
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 " ~~~~~~~~~~~~~~~~~~~~ NERDTree API ~~~~~~~~~~~~~~~~~~~~
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -21,16 +38,9 @@ function! gitNERD#Init(event)
     const subject  = a:event['subject']
     const nerdtree = a:event['nerdtree']
     " only move on if the nerdtree root is a git repository
-    if !s:IsNERDTreeInRepo(nerdtree) | return | endif
-    " save old function so we can do a super-call
-    if !has_key(subject, '__displayString')
-        let subject.__displayString = subject.displayString
-    endif
-    " replace with our new edited function
-    function! subject.displayString() closure
-        call s:ComputeGitStatusFor(self, nerdtree)
-        return get(self, 'gitStatus', '[  ]').' '.self.__displayString()
-    endfunction
+    if !s:IsNERDTreeInRepo(nerdtree)   | return | endif
+    if !s:IsValidNERDTreePath(subject) | return | endif
+    call s:PrepareNode(subject, nerdtree)
 endfunction
 
 " Marks nodes as stale when refreshed.
@@ -38,8 +48,10 @@ function! gitNERD#Refresh(event)
     const subject = a:event['subject']
     const nerdtree = a:event['nerdtree']
     " only move on if the nerdtree root is a git repository
-    if !s:IsNERDTreeInRepo(nerdtree) | return | endif
+    if !s:IsNERDTreeInRepo(nerdtree)   | return | endif
+    if !s:IsValidNERDTreePath(subject) | return | endif
     " mark as stale
+    call s:PrepareNode(subject, nerdtree)
     let subject.gitStatusStale = 1
 endfunction
 
@@ -47,10 +59,17 @@ endfunction
 " ~~~~~~~~~~~~~~~~~~~~ GitNERD API ~~~~~~~~~~~~~~~~~~~~
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-function! s:IsNERDTreeInRepo(nerdtree)
-    return has_key(a:nerdtree, 'root')
-                \ && has_key(a:nerdtree.root, 'path')
-                \ && gitNERD#IsInsideGitRepo(a:nerdtree.root.path.str())
+" Prepare a NERDTree node so it can have a Git status indicator.
+function! s:PrepareNode(node, nerdtree)
+    " save old function so we can do a super-call
+    " conveniently we can also use this to check if we processed this node already
+    if has_key(a:node, '__displayString') | return | endif
+    let a:node.__displayString = a:node.displayString
+    " replace with our new edited function
+    function! a:node.displayString() closure
+        call s:ComputeGitStatusFor(self, a:nerdtree)
+        return get(self, 'gitStatus', s:WrapStatus('  ')).' '.self.__displayString()
+    endfunction
 endfunction
 
 " Computes and sets the git status for 'node' in 'nerdtree'. If the status is marked as
@@ -61,20 +80,38 @@ function! s:ComputeGitStatusFor(node, nerdtree)
     call gitNERD#ComputeGitStatus(
                 \ pathspec,
                 \ {s -> s:UpdateGitStatusFor(a:node, a:nerdtree, s)},
+                \ g:gitNERD_status_flags
                 \ )
 endfunction
 
 " Sets 'status' on 'node' and re-renders 'nerdtree'
 function! s:UpdateGitStatusFor(node, nerdtree, status)
-    const statusInd = '['.substitute(a:status, '\.', ' ', 'g').']'
+    const statusInd = s:WrapStatus(substitute(a:status, '\.', ' ', 'g'))
     let a:node.gitStatus      = statusInd
     let a:node.gitStatusStale = 0
+    call s:RedrawNERDTree(a:nerdtree)
+endfunction
+
+" ~~~~~~~~~~~~~~~~~~~~ Helper Methods ~~~~~~~~~~~~~~~~~~~~
+
+" Throttled redrawing of the currently open NERDTree.
+function! s:RedrawNERDTree(nerdtree, throttle = g:gitNERD_render_throttle_ms)
+    if exists('g:gitNERDtimer') | return | endif
+    " we have no scheduled execution, start a new one
+    let g:gitNERDtimer = timer_start(a:throttle, {_ -> s:_RedrawNERDTree(a:nerdtree)})
+endfunction
+
+" Redraws the currently open NERDTree and marks the action as completed.
+function! s:_RedrawNERDTree(nerdtree)
+    if !a:nerdtree.IsOpen() | return | endif
     " remember window we were from, jump to NERDTree and render, jump back
     const [curwinnr, curview] = [win_getid(), winsaveview()]
     call a:nerdtree.CursorToTreeWin()
     call a:nerdtree.render()
     call win_gotoid(curwinnr)
     call winrestview(curview)
+    " mark as completed
+    unlet g:gitNERDtimer
 endfunction
 
 " Returns whether or not a 'node' has a stale git status.
@@ -82,6 +119,23 @@ function! s:IsStatusStale(node)
     return has_key(a:node, 'gitStatus')
                 \ && has_key(a:node, 'gitStatusStale')
                 \ && !a:node['gitStatusStale']
+endfunction
+
+" Convenience function for checking if we should proceed to handle an event.
+function! s:IsNERDTreeInRepo(nerdtree)
+    return has_key(a:nerdtree, 'root')
+                \ && has_key(a:nerdtree.root, 'path')
+                \ && gitNERD#IsInsideGitRepo(a:nerdtree.root.path.str())
+endfunction
+
+" Make sure the path we are pursuing is not inside '.git'. We don't need or want that...
+function! s:IsValidNERDTreePath(node)
+    return has_key(a:node, 'pathSegments')
+                \ && index(a:node.pathSegments, '.git') == -1
+endfunction
+
+function! s:WrapStatus(status)
+    return get(g:gitNERD_delimiters, 0, '').a:status.get(g:gitNERD_delimiters, 1, '')
 endfunction
 
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
