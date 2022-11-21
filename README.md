@@ -26,7 +26,7 @@ using [vim-plug](https://github.com/junegunn/vim-plug):
 call plug#begin()
 
 Plug 'preservim/nerdtree'
-Plug 'TODO'
+Plug 'MarcelSimader/GitNERD'
 
 call plug#end()
 ```
