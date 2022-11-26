@@ -37,9 +37,6 @@ call g:NERDTreePathNotifier.AddListener("refresh", "gitNERD#Refresh")
 function! gitNERD#Init(event)
     const subject  = a:event['subject']
     const nerdtree = a:event['nerdtree']
-    " only move on if the nerdtree root is a git repository
-    if !s:IsNERDTreeInRepo(nerdtree)   | return | endif
-    if !s:IsValidNERDTreePath(subject) | return | endif
     call s:PrepareNode(subject, nerdtree)
 endfunction
 
@@ -47,12 +44,12 @@ endfunction
 function! gitNERD#Refresh(event)
     const subject = a:event['subject']
     const nerdtree = a:event['nerdtree']
-    " only move on if the nerdtree root is a git repository
-    if !s:IsNERDTreeInRepo(nerdtree)   | return | endif
-    if !s:IsValidNERDTreePath(subject) | return | endif
-    " mark as stale
+    " mark as stale right away, so we don't accidentally leave nodes that should be stale
+    " already around in some circumstances
+    if has_key(subject, 'gitStatusStale')
+        let subject.gitStatusStale = 1
+    endif
     call s:PrepareNode(subject, nerdtree)
-    let subject.gitStatusStale = 1
 endfunction
 
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,12 +58,26 @@ endfunction
 
 " Prepare a NERDTree node so it can have a Git status indicator.
 function! s:PrepareNode(node, nerdtree)
+    " only move on if the nerdtree root is a git repository
+    if !s:ContinueProcessingEvent(a:nerdtree, a:node) | return | endif
     " save old function so we can do a super-call
     " conveniently we can also use this to check if we processed this node already
     if has_key(a:node, '__displayString') | return | endif
     let a:node.__displayString = a:node.displayString
     " replace with our new edited function
     function! a:node.displayString() closure
+        " check if we are in a cascade
+        if has_key(a:nerdtree, 'root') && has_key(a:nerdtree.root, 'findNode')
+            const parentdir = has_key(self, 'getParent') ?
+                            \ a:nerdtree.root.findNode(self.getParent())
+                        \ : has_key(self, 'parent') ?
+                            \ a:nerdtree.root.findNode(self.parent)
+                        \ : {}
+            if has_key(parentdir, 'isCascadable') && parentdir.isCascadable()
+                return self.__displayString()
+            endif
+        endif
+        " if NOT we can compute and display the status
         call s:ComputeGitStatusFor(self, a:nerdtree)
         return get(self, 'gitStatus', s:WrapStatus('  ')).' '.self.__displayString()
     endfunction
@@ -121,6 +132,15 @@ function! s:IsStatusStale(node)
                 \ && !a:node['gitStatusStale']
 endfunction
 
+function! s:WrapStatus(status)
+    return get(g:gitNERD_delimiters, 0, '').a:status.get(g:gitNERD_delimiters, 1, '')
+endfunction
+
+" Whether or not we should continue processing a NERDTree event.
+function! s:ContinueProcessingEvent(nerdtree, node)
+    return s:IsNERDTreeInRepo(a:nerdtree) && s:IsValidNERDTreePath(a:node)
+endfunction
+
 " Convenience function for checking if we should proceed to handle an event.
 function! s:IsNERDTreeInRepo(nerdtree)
     return has_key(a:nerdtree, 'root')
@@ -132,10 +152,6 @@ endfunction
 function! s:IsValidNERDTreePath(node)
     return has_key(a:node, 'pathSegments')
                 \ && index(a:node.pathSegments, '.git') == -1
-endfunction
-
-function! s:WrapStatus(status)
-    return get(g:gitNERD_delimiters, 0, '').a:status.get(g:gitNERD_delimiters, 1, '')
 endfunction
 
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
