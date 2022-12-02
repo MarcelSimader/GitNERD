@@ -114,13 +114,14 @@ endfunction
 
 " Redraws the currently open NERDTree and marks the action as completed.
 function! s:_RedrawNERDTree(nerdtree)
-    if !a:nerdtree.IsOpen() | return | endif
-    " remember window we were from, jump to NERDTree and render, jump back
-    const [curwinnr, curview] = [win_getid(), winsaveview()]
-    call a:nerdtree.CursorToTreeWin()
-    call a:nerdtree.render()
-    call win_gotoid(curwinnr)
-    call winrestview(curview)
+    if a:nerdtree.IsOpen()
+        " remember window we were from, jump to NERDTree and render, jump back
+        const [curwinnr, curview] = [win_getid(), winsaveview()]
+        call a:nerdtree.CursorToTreeWin()
+        call a:nerdtree.render()
+        call win_gotoid(curwinnr)
+        call winrestview(curview)
+    endif
     " mark as completed
     unlet g:gitNERDtimer
 endfunction
