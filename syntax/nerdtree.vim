@@ -8,7 +8,7 @@ syn match GitNERDStatusNone /\[..\=\]/
 
 syn cluster GitNERD contains=GitNERDStatusUntracked,GitNERDStatusIgnored,
             \ GitNERDStatusAdded,GitNERDStatusModified,GitNERDStatusDeleted,
-            \ GitNERDStatusRenamed
+            \ GitNERDStatusRenamed, GitNERDStatusSubmodule
 
 syn match GitNERDStatusUntracked /\[??\=\]/ms=s+1,me=e-1
             \ containedin=NERDTreeDir,NERDTreeFile
@@ -22,12 +22,15 @@ syn match GitNERDStatusDeleted   /\[\(.D\|D.\)\]/ms=s+1,me=e-1
             \ containedin=NERDTreeDir,NERDTreeFile
 syn match GitNERDStatusRenamed   /\[\(.R\|R.\)\]/ms=s+1,me=e-1
             \ containedin=NERDTreeDir,NERDTreeFile
+syn match GitNERDStatusSubmodule /\[S\(.\|S\)\]/ms=s+1,me=e-1
+            \ containedin=NERDTreeDir,NERDTreeFile
 
-hi def GitNERDStatusNone      ctermfg=Black    ctermbg=NONE
-hi def GitNERDStatusUntracked ctermfg=DarkGray ctermbg=NONE
-hi def GitNERDStatusIgnored   ctermfg=DarkRed  ctermbg=NONE
-hi def GitNERDStatusAdded     ctermfg=Cyan     ctermbg=NONE
-hi def GitNERDStatusModified  ctermfg=Green    ctermbg=NONE
-hi def GitNERDStatusDeleted   ctermfg=Red      ctermbg=NONE
-hi def GitNERDStatusRenamed   ctermfg=Blue     ctermbg=NONE
+hi def GitNERDStatusNone      ctermfg=Black      ctermbg=NONE
+hi def GitNERDStatusUntracked ctermfg=DarkGray   ctermbg=NONE
+hi def GitNERDStatusIgnored   ctermfg=DarkRed    ctermbg=NONE
+hi def GitNERDStatusAdded     ctermfg=Cyan       ctermbg=NONE
+hi def GitNERDStatusModified  ctermfg=Green      ctermbg=NONE
+hi def GitNERDStatusDeleted   ctermfg=Red        ctermbg=NONE
+hi def GitNERDStatusRenamed   ctermfg=Blue       ctermbg=NONE
+hi def GitNERDStatusSubmodule ctermfg=DarkYellow ctermbg=NONE
 
