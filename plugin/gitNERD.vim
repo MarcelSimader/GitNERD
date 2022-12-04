@@ -205,7 +205,6 @@ function! s:GitStatusMessageToStr(message)
             " other
             " check if we have a submodule
             const sub = get(rest, 0, 'N...')
-            echomsg sub
             if sub =~ 'S[CMU\.]\{3}'
                 const commitchanged = strpart(sub, 0, 1)
                 return 'S'.commitchanged
