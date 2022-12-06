@@ -27,7 +27,7 @@ syn match GitNERDStatusSubmodule /\[S\(.\|S\)\]/ms=s+1,me=e-1
 
 hi def GitNERDStatusNone      ctermfg=Black      ctermbg=NONE
 hi def GitNERDStatusUntracked ctermfg=DarkGray   ctermbg=NONE
-hi def GitNERDStatusIgnored   ctermfg=DarkRed    ctermbg=NONE
+hi def GitNERDStatusIgnored   ctermfg=DarkGray   ctermbg=NONE
 hi def GitNERDStatusAdded     ctermfg=Cyan       ctermbg=NONE
 hi def GitNERDStatusModified  ctermfg=Green      ctermbg=NONE
 hi def GitNERDStatusDeleted   ctermfg=Red        ctermbg=NONE
