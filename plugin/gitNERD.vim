@@ -44,9 +44,9 @@ endfunction
 function! gitNERD#Refresh(event)
     const subject = a:event['subject']
     const nerdtree = a:event['nerdtree']
-    " mark as stale right away, so we don't accidentally leave nodes that should be stale
-    " already around in some circumstances
-    if has_key(subject, 'gitStatusStale')
+    " mark as stale and recompute status
+    if has_key(subject, 'gitStatus') && has_key(subject, 'gitStatusStale')
+        let subject.gitStatus      = s:WrapStatus('  ')
         let subject.gitStatusStale = 1
     endif
     call s:PrepareNode(subject, nerdtree)
@@ -60,8 +60,8 @@ endfunction
 function! s:PrepareNode(node, nerdtree)
     " only move on if the nerdtree root is a git repository
     if !s:ContinueProcessingEvent(a:nerdtree, a:node) | return | endif
-    " save old function so we can do a super-call
-    " conveniently we can also use this to check if we processed this node already
+    " save old function so we can do a super-call -- conveniently we can also use this to
+    " check if we processed this node already and exit early
     if has_key(a:node, '__displayString') | return | endif
     let a:node.__displayString = a:node.displayString
     " replace with our new edited function
@@ -86,7 +86,7 @@ endfunction
 " Computes and sets the git status for 'node' in 'nerdtree'. If the status is marked as
 " stale, this starts a new job with callback, otherwise the node is left as-is.
 function! s:ComputeGitStatusFor(node, nerdtree)
-    if s:IsStatusStale(a:node) | return | endif
+    if !s:IsStatusStale(a:node) | return | endif
     const pathspec = a:node.str()
     call gitNERD#ComputeGitStatus(
                 \ pathspec,
@@ -128,9 +128,9 @@ endfunction
 
 " Returns whether or not a 'node' has a stale git status.
 function! s:IsStatusStale(node)
-    return has_key(a:node, 'gitStatus')
-                \ && has_key(a:node, 'gitStatusStale')
-                \ && !a:node['gitStatusStale']
+    return !has_key(a:node, 'gitStatus')
+                \ || !has_key(a:node, 'gitStatusStale')
+                \ || a:node['gitStatusStale']
 endfunction
 
 function! s:WrapStatus(status)

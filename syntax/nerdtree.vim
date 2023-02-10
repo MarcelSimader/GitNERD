@@ -1,7 +1,7 @@
 " Author: Marcel Simader (marcel0simader@gmail.com)
 " Date: 21.11.2022
 " (c) Marcel Simader 2022
-"
+
 syn match GitNERDStatusNone /\[..\=\]/
             \ containedin=NERDTreeDir,NERDTreeFile
             \ contains=@GitNERD
