@@ -22,9 +22,9 @@ endfunction
 
 call s:Config('gitNERD_enabled', {-> 1})
 if !g:gitNERD_enabled | finish | endif
-call s:Config('gitNERD_render_throttle_ms', {-> 35})
+call s:Config('gitNERD_render_throttle_ms', {-> 100})
 call s:Config('gitNERD_delimiters', {-> ['[', ']']})
-call s:Config('gitNERD_status_flags', {-> ['--ignored', '--find-renames=5']})
+call s:Config('gitNERD_status_flags', {-> ['--ignored', '--find-renames=1']})
 
 " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 " ~~~~~~~~~~~~~~~~~~~~ NERDTree API ~~~~~~~~~~~~~~~~~~~~
@@ -89,16 +89,14 @@ function! s:ComputeGitStatusFor(node, nerdtree)
     if !s:IsStatusStale(a:node) | return | endif
     const pathspec = a:node.str()
     call gitNERD#ComputeGitStatus(
-                \ pathspec,
                 \ {s -> s:UpdateGitStatusFor(a:node, a:nerdtree, s)},
-                \ g:gitNERD_status_flags
+                \ g:gitNERD_status_flags + ['--', pathspec],
                 \ )
 endfunction
 
 " Sets 'status' on 'node' and re-renders 'nerdtree'
 function! s:UpdateGitStatusFor(node, nerdtree, status)
-    const statusInd = s:WrapStatus(substitute(a:status, '\.', ' ', 'g'))
-    let a:node.gitStatus      = statusInd
+    let a:node.gitStatus      = a:status
     let a:node.gitStatusStale = 0
     call s:RedrawNERDTree(a:nerdtree)
 endfunction
@@ -139,7 +137,10 @@ endfunction
 
 " Whether or not we should continue processing a NERDTree event.
 function! s:ContinueProcessingEvent(nerdtree, node)
-    return s:IsNERDTreeInRepo(a:nerdtree) && s:IsValidNERDTreePath(a:node)
+    if has_key(a:node, 'gitValid') | return a:node['gitValid'] | endif
+    let a:node['gitValid']
+                \ = s:IsNERDTreeInRepo(a:nerdtree) && s:IsValidNERDTreePath(a:node)
+    return a:node['gitValid']
 endfunction
 
 " Convenience function for checking if we should proceed to handle an event.
@@ -173,9 +174,9 @@ endfunction
 "   [arguments,] a list of extra arguments to pass to Git
 " Returns:
 "   the job object
-function! gitNERD#ComputeGitStatus(pathspec, Callback, arguments = [])
+function! gitNERD#ComputeGitStatus(Callback, arguments = [])
     const Callback = a:Callback
-    const args = ['git', 'status', a:pathspec, '--porcelain=v2'] + a:arguments
+    const args = ['git', 'status', '--porcelain=v2'] + a:arguments
     const opts = {'out_cb': {_, msg -> Callback(s:GitStatusMessageToStr(msg))},
                 \ 'timeout': 50}
     let g:gitNERDjob = job_start(args, opts)
@@ -188,36 +189,52 @@ endfunction
 " Returns:
 "   a string of length 2
 function! s:GitStatusMessageToStr(message)
+    const status = s:_GitStatusMessageToStr(a:message)
+    return s:WrapStatus(substitute(status, '\.', ' ', 'g'))
+endfunction
+
+function! s:_GitStatusMessageToStr(message)
     const output = split(a:message, ' ')
     if len(output) < 2
         " path is unknown in some way
         return '  '
     else
         " path is known and we have one of the 3 defined formats
-        const [ind, xy; rest] = output
+        const [ind; rest] = output
         if ind == '?'
             " untracked
+            const [path] = rest
             return '??'
         elseif ind == '!'
             " ignored
+            const [path] = rest
             return '!!'
-        elseif ind == '1' || ind == '2' || ind == 'u'
-            " other
-            " check if we have a submodule
-            const sub = get(rest, 0, 'N...')
-            if sub =~ 'S[CMU\.]\{3}'
-                const commitchanged = strpart(sub, 0, 1)
-                return 'S'.commitchanged
-            elseif sub =~ 'N\.\.\.'
-                return xy
-            else
-                " error?
-                return '##'
-            endif
-        else
-            " error?
-            return '##'
+        elseif ind == '1'
+            " ordinary changed
+            const [xy, sub, _mH, _mI, _mW, _hH, _hI, path] = rest
+            return s:_GitStatusMessageToStrSubmodule(xy, sub)
+        elseif ind == '2'
+            " renamed or copied
+            const [xy, sub, _mH, _mI, _mW, _hH, _hI, _Xscore, _path_sep_origpath] = rest
+            return s:_GitStatusMessageToStrSubmodule(xy, sub)
+        elseif ind == 'u'
+            " unmerged entry
+            const [xy, sub, _m1, _m2, _m3, _mW, _h1, _h2, _h3, path] = rest
+            return s:_GitStatusMessageToStrSubmodule(xy, sub)
         end
+        " error?
+        return '##'
     endif
+endfunction
+
+function! s:_GitStatusMessageToStrSubmodule(xy, sub)
+    if a:sub =~ 'S[CMU\.]\{3}'
+        const commitchanged = strpart(a:sub, 0, 1)
+        return 'S'.commitchanged
+    elseif a:sub =~ 'N\.\.\.'
+        return a:xy
+    endif
+    " error?
+    return '##'
 endfunction
 
